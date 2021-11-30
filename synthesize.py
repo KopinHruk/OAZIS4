@@ -1,3 +1,7 @@
+# sudo apt install portaudio19-dev python3-pyaudio
+# python3 synthesize.py --text "YOUR_DESIRED_TEXT" --restore_step 900000 --mode single -p config/LJSpeech/preprocess.yaml -m config/LJSpeech/model.yaml -t config/LJSpeech/train.yaml
+# https://drive.google.com/file/d/1r3fYhnblBJ8hDKDSUDtidJ-BN-xAM9pe/view?usp=sharing
+
 import re
 import argparse
 from string import punctuation
@@ -14,7 +18,7 @@ from utils.tools import to_device, synth_samples
 from dataset import TextDataset
 from text import text_to_sequence
 
-device = torch.device('cpu') #torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device('cpu')  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def read_lexicon(lex_path):
@@ -106,6 +110,67 @@ def synthesize(model, step, configs, vocoder, batchs, control_values):
                 preprocess_config,
                 train_config["path"]["result_path"],
             )
+
+
+class AttrDict(dict):
+    def __init__(self, *args, **kwargs):
+        super(AttrDict, self).__init__(*args, **kwargs)
+        self.__dict__ = self
+
+def fast_run(text):
+    args = {
+        'text': text,
+        'restore_step': 900000,
+        'mode': 'single',
+        'preprocess_config': 'config/LJSpeech/preprocess.yaml',
+        'model_config': 'config/LJSpeech/model.yaml',
+        'train_config': 'config/LJSpeech/train.yaml',
+    }
+
+    args = AttrDict(args)
+
+    # Check source texts
+    if args.mode == "batch":
+        assert args.source is not None and args.text is None
+    if args.mode == "single":
+        assert args.source is None and args.text is not None
+
+    # Read Config
+    preprocess_config = yaml.load(
+        open(args.preprocess_config, "r"), Loader=yaml.FullLoader
+    )
+    model_config = yaml.load(open(args.model_config, "r"), Loader=yaml.FullLoader)
+    train_config = yaml.load(open(args.train_config, "r"), Loader=yaml.FullLoader)
+    configs = (preprocess_config, model_config, train_config)
+
+    # Get model
+    model = get_model(args, configs, device, train=False)
+
+    # Load vocoder
+    vocoder = get_vocoder(model_config, device)
+
+    # Preprocess texts
+    if args.mode == "batch":
+        # Get dataset
+        dataset = TextDataset(args.source, preprocess_config)
+        batchs = DataLoader(
+            dataset,
+            batch_size=8,
+            collate_fn=dataset.collate_fn,
+        )
+    if args.mode == "single":
+        ids = raw_texts = [args.text[:100]]
+        speakers = np.array([args.speaker_id])
+        if preprocess_config["preprocessing"]["text"]["language"] == "en":
+            texts = np.array([preprocess_english(args.text, preprocess_config)])
+        elif preprocess_config["preprocessing"]["text"]["language"] == "zh":
+            texts = np.array([preprocess_mandarin(args.text, preprocess_config)])
+        text_lens = np.array([len(texts[0])])
+        batchs = [(ids, raw_texts, speakers, texts, text_lens, max(text_lens))]
+
+    control_values = args.pitch_control, args.energy_control, args.duration_control
+
+    synthesize(model, args.restore_step, configs, vocoder, batchs, control_values)
 
 
 if __name__ == "__main__":
