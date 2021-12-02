@@ -1,5 +1,4 @@
 import typer
-
 from synthesize import fast_run
 
 
