@@ -11,6 +11,15 @@ def main(
         None,
         help='Write text for speech synthesis'
     ),
+    pitch_control: float = typer.Option(
+        1.0,
+        help='Speech pitch.'),
+    energy_control: float = typer.Option(
+        1.0,
+        help='Speech energy.'),
+    duration_control: float = typer.Option(
+        1.0,
+        help='Speech speed.'),
 ):
 
     if mode.lower() == 'recognition':
@@ -19,7 +28,7 @@ def main(
         if text_input is None:
             typer.echo("Error: Missing option '--text_input'", err=True)
 
-        fast_run(text_input)
+        fast_run(text_input, pitch_control, energy_control, duration_control)
 
     else:
         return
